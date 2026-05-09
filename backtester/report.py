@@ -57,7 +57,15 @@ def generate_report(results_df, metrics, filename=None):
         for _, row in per_stock.head(20).iterrows():
             print(f"  {row['symbol']:<20} {int(row['trades']):>6} {row['win_rate']:>6} {row['avg_return']:>9} {row['total_return']:>9}")
 
-        print(f"\n  Full results saved to: {filename}")
+        # Fast per-stock summary CSV
+        summary_path = filename.replace(".csv", "_summary.csv")
+        try:
+            per_stock.to_csv(summary_path, index=False)
+            print(f"\n  Summary saved to  : {summary_path}")
+        except Exception:
+            pass
+
+        print(f"  Full trades saved to: {filename}")
         try:
             results_df.to_csv(filename, index=False)
         except Exception as e:
