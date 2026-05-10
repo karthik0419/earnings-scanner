@@ -33,11 +33,14 @@ HEADERS = {
 # All NSE sector + thematic indices with their constituent file names
 # Source: https://www.niftyindices.com/IndexConstituent/
 INDEX_UNIVERSE = {
-    # Broad market
-    "Nifty 50":          "ind_nifty50list.csv",
-    "Nifty Next 50":     "ind_niftynext50list.csv",
-    "Nifty Midcap 150":  "ind_niftymidcap150list.csv",
-    "Nifty Smallcap 100":"ind_niftysmallcap100list.csv",
+    # Broad market — ordered largest to smallest so dedup keeps best-known tag
+    "Nifty 50":            "ind_nifty50list.csv",
+    "Nifty Next 50":       "ind_niftynext50list.csv",
+    "Nifty 500":           "ind_nifty500list.csv",          # top 500 by mkt cap
+    "Nifty Largemidcap250":"ind_niftylargemidcap250list.csv",
+    "Nifty Midcap 150":    "ind_niftymidcap150list.csv",
+    "Nifty Smallcap 250":  "ind_niftysmallcap250list.csv",  # was 100, now 250
+    "Nifty Midcap 50":     "ind_niftymidcap50list.csv",
 
     # Sector indices
     "IT":                "ind_niftyitlist.csv",
@@ -153,6 +156,26 @@ HARDCODED_SECTORS = {
         "BHARTIARTL", "IDEA", "HFCL", "STLTECH", "TEJASNET",
         "VINDHYATEL", "RAILTEL", "ITI", "TATACOMM",
         "OPTIEMUS", "CMSINFO",
+    ],
+
+    # Quality Small Caps — strong earnings, recent IPOs, below all index radar
+    # Manually curated; these won't appear in any NSE index constituent list
+    "Quality Small Caps": [
+        # Precision engineering & electronics
+        "HARSHA", "SYRMA", "AVALON", "CENTUM", "ELIN",
+        "AZAD", "IDEAFORGE", "KAYNES",
+        # Specialty chemicals & materials
+        "GRAVITA", "ANUPAM", "EPIGRAL", "TATACHEM",
+        # Healthcare & diagnostics
+        "VIJAYA", "KRSNAA", "MEDPLUS", "HEALTHIUM",
+        # New-age financial services
+        "SBFC", "UGROCAP", "CREDITACC",
+        # Consumer & retail
+        "GOPAL", "BIKAJI", "CAMPUS", "SAPPHIRE",
+        # Capital goods & infra
+        "SANGHVIMOV", "INOXINDIA", "GARFIBRES",
+        # Defense & aerospace
+        "IDEAFORGE", "DEEL",
     ],
 }
 
@@ -282,6 +305,75 @@ def get_symbol_sector_map():
             sym += ".NS"
         result[sym] = row["sector"]
     return result
+
+
+def fetch_nse_eq_list():
+    """
+    Fetch NSE's full EQ-series equity list (all actively listed stocks).
+    Filters to EQ series only — excludes SME, BE, BZ, BL etc.
+    Returns DataFrame with symbol + sector='NSE EQ'.
+    Used for discovery scanning to catch stocks below all index radar.
+    Cached for 7 days.
+    """
+    cache_path = os.path.join(CACHE_DIR, "nse_eq_list.csv")
+    if _is_fresh(cache_path, max_age_hours=168):
+        try:
+            df = pd.read_csv(cache_path)
+            if len(df) > 100:
+                return df
+        except Exception:
+            pass
+
+    url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=20)
+        if resp.status_code != 200 or len(resp.content) < 1000:
+            return pd.DataFrame()
+
+        df = pd.read_csv(StringIO(resp.text))
+        df.columns = [c.strip() for c in df.columns]
+
+        # Keep only main-board EQ series
+        if "SERIES" in df.columns:
+            df = df[df["SERIES"].str.strip() == "EQ"]
+
+        sym_col = next((c for c in df.columns if "SYMBOL" in c.upper()), None)
+        if sym_col is None:
+            return pd.DataFrame()
+
+        symbols = df[sym_col].dropna().str.strip().str.upper().tolist()
+        symbols = [s for s in symbols if s and not s.startswith("DUMMY") and len(s) <= 20]
+
+        result = pd.DataFrame({
+            "symbol":    symbols,
+            "sector":    "NSE EQ",
+            "symbol_ns": [s + ".NS" for s in symbols],
+        })
+        result.to_csv(cache_path, index=False)
+        print(f"  NSE EQ list fetched: {len(result)} stocks")
+        return result
+
+    except Exception as e:
+        print(f"  NSE EQ list fetch failed: {e}")
+        return pd.DataFrame()
+
+
+def fetch_extended_universe():
+    """
+    Returns the full EQ-series NSE list minus stocks already in sector universe.
+    Use this for monthly discovery scans to find below-index stocks like recent IPOs.
+    """
+    base_df   = fetch_sector_universe()
+    base_syms = set(base_df["symbol"].str.upper().tolist()) if not base_df.empty else set()
+
+    eq_df = fetch_nse_eq_list()
+    if eq_df.empty:
+        return pd.DataFrame()
+
+    # Stocks in NSE EQ list but NOT already in our sector universe
+    extended = eq_df[~eq_df["symbol"].str.upper().isin(base_syms)].reset_index(drop=True)
+    print(f"  Extended universe: {len(extended)} below-index stocks (not in any NSE index)")
+    return extended
 
 
 def _load_fallback():

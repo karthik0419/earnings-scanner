@@ -27,7 +27,7 @@ from data.fetcher import fetch_cached, fetch_all_parallel
 from data.earnings import fetch_earnings
 from data.result_dates import get_result_date, fetch_upcoming_results
 from data.sectors import rank_sectors, get_sector_stocks
-from data.nse_universe import fetch_nse_universe, get_symbol_sector_map
+from data.nse_universe import fetch_nse_universe, get_symbol_sector_map, fetch_extended_universe
 from engine.earnings_filter import filter_earnings
 from engine.price_reactor import measure_reaction, avg_spike
 from engine.entry_detector import detect_entry
@@ -187,7 +187,7 @@ def _update_monthly_watchlist(df_new):
 
 def main():
     parser = argparse.ArgumentParser(description="Earnings Momentum Scanner")
-    parser.add_argument("--mode",      choices=["weekly", "daily"], default="weekly")
+    parser.add_argument("--mode",      choices=["weekly", "daily", "discovery"], default="weekly")
     parser.add_argument("--top",       type=int,   default=None)
     parser.add_argument("--min-score", type=float, default=None)
     parser.add_argument("--sector",    type=str,   default=None)
@@ -203,6 +203,11 @@ def main():
         min_score = args.min_score or 35
         delay     = args.delay     or 2.0
         workers   = args.workers   or 5
+    elif args.mode == "discovery":
+        top       = args.top       or 50
+        min_score = args.min_score or 40
+        delay     = args.delay     or 2.5
+        workers   = args.workers   or 4
     else:
         top       = args.top       or 20
         min_score = args.min_score or 40
@@ -239,10 +244,20 @@ def main():
         sym_sector_map = get_symbol_sector_map()
         for sym, sec in sym_sector_map.items():
             sector_stock_map[sym] = sec
-        # Backbone always included
         for sym in _load_list(BACKBONE_FILE):
             sector_stock_map.setdefault(sym, "Backbone")
         print(f"  Sector universe: {len(sector_stock_map)} stocks across all indices")
+
+    elif args.mode == "discovery":
+        # Full EQ-series list — catches below-index stocks, recent IPOs, small caps
+        ext_df = fetch_extended_universe()
+        if not ext_df.empty:
+            col = "symbol_ns" if "symbol_ns" in ext_df.columns else "symbol"
+            for sym in ext_df[col].tolist():
+                s = sym if sym.endswith(".NS") else sym + ".NS"
+                sector_stock_map[s] = "NSE EQ"
+        print(f"  Discovery universe: {len(sector_stock_map)} below-index stocks")
+        print(f"  (These are NOT in any NSE index — catching recent IPOs & small caps)")
 
     else:
         # Daily: sector stocks + backbone
