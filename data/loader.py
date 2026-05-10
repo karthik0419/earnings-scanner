@@ -1,6 +1,8 @@
 import os
+import pickle
 import pandas as pd
 from datetime import date, timedelta
+from pathlib import Path
 
 # Fix jugaad-data Windows makedirs bug
 _orig_makedirs = os.makedirs
@@ -8,12 +10,43 @@ os.makedirs = lambda p, *a, **kw: _orig_makedirs(p, *a, exist_ok=True, **{k: v f
 
 from jugaad_data.nse import stock_df as nse_stock_df
 
+_CACHE_DIR = Path(__file__).parent / "cache"
+_CACHE_DIR.mkdir(exist_ok=True)
+
+
+def _cache_path(symbol, days):
+    key = f"{symbol.replace('.', '_')}_{days}_{date.today()}.pkl"
+    return _CACHE_DIR / key
+
+
+def _cache_load(symbol, days):
+    p = _cache_path(symbol, days)
+    if p.exists():
+        try:
+            with open(p, "rb") as f:
+                return pickle.load(f)
+        except Exception:
+            p.unlink(missing_ok=True)
+    return None
+
+
+def _cache_save(symbol, days, df):
+    try:
+        with open(_cache_path(symbol, days), "wb") as f:
+            pickle.dump(df, f)
+    except Exception:
+        pass
+
 
 def _nse_symbol(symbol):
     return symbol.replace(".NS", "").replace(".BO", "").upper()
 
 
 def _fetch_nse(symbol, days=180):
+    cached = _cache_load(symbol, days)
+    if cached is not None:
+        return cached
+
     sym = _nse_symbol(symbol)
     to_dt = date.today()
     from_dt = to_dt - timedelta(days=days)
@@ -31,7 +64,9 @@ def _fetch_nse(symbol, days=180):
         raw["Date"] = pd.to_datetime(raw["Date"]).dt.tz_localize(None).dt.normalize()
         raw = raw.set_index("Date").sort_index()
         cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in raw.columns]
-        return raw[cols].dropna()
+        result = raw[cols].dropna()
+        _cache_save(symbol, days, result)
+        return result
 
     # Fallback: yfinance
     try:
@@ -41,9 +76,12 @@ def _fetch_nse(symbol, days=180):
         period = period_map.get(days) or ("2y" if days <= 400 else "5y")
         df = yf.download(yf_sym, period=period, interval="1d", progress=False, auto_adjust=True)
         if df is not None and not df.empty:
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
             df.index = pd.to_datetime(df.index).tz_localize(None).normalize()
-            df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
-            return df
+            result = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
+            _cache_save(symbol, days, result)
+            return result
     except Exception:
         pass
 
