@@ -1,225 +1,207 @@
 """
-Full NSE equity universe fetcher.
-Downloads daily bhavcopy from NSE, filters by price + volume,
-returns ~800-1000 liquid, actionable stocks.
-Fallback: nifty500.txt if bhavcopy unavailable.
+NSE sector-based universe fetcher.
+Pulls official index constituent lists from niftyindices.com for all
+18 sector/thematic indices. Covers ~400-500 quality, liquid stocks
+across every sector — no stock left behind.
+
+Sector momentum is used for SCORING only, not filtering.
+All sectors scanned every week.
 """
 
 import os
+import time
 import requests
 import pandas as pd
-from datetime import date, timedelta, datetime
+from datetime import datetime, timedelta
+from io import StringIO
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "cache")
 BASE_DIR  = os.path.join(os.path.dirname(__file__), "..")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-NSE_HEADERS = {
+HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
     "Accept": "text/html,application/xhtml+xml,*/*",
-    "Referer": "https://www.nseindia.com",
+    "Referer": "https://www.niftyindices.com/",
 }
 
-MIN_PRICE  = 20       # filter out penny stocks
-MIN_VOLUME = 10000    # minimum daily traded quantity
+# All NSE sector + thematic indices with their constituent file names
+# Source: https://www.niftyindices.com/IndexConstituent/
+INDEX_UNIVERSE = {
+    # Broad market
+    "Nifty 50":          "ind_nifty50list.csv",
+    "Nifty Next 50":     "ind_niftynext50list.csv",
+    "Nifty Midcap 150":  "ind_niftymidcap150list.csv",
+    "Nifty Smallcap 100":"ind_niftysmallcap100list.csv",
+
+    # Sector indices
+    "IT":                "ind_niftyitlist.csv",
+    "Bank":              "ind_niftybanklist.csv",
+    "Pharma":            "ind_niftypharmalist.csv",
+    "Auto":              "ind_niftyautolist.csv",
+    "FMCG":              "ind_niftyfmcglist.csv",
+    "Metal":             "ind_niftymetallist.csv",
+    "Realty":            "ind_niftyrealtylist.csv",
+    "Energy":            "ind_niftyenergylist.csv",
+    "Media":             "ind_niftymedialist.csv",
+    "PSU Bank":          "ind_niftypsubanklist.csv",
+    "Private Bank":      "ind_niftypvtbanklist.csv",
+    "Financial Services":"ind_niftyfinancelist.csv",
+    "Healthcare":        "ind_niftyhealthcarelist.csv",
+    "Consumption":       "ind_niftyconsumptionlist.csv",
+
+    # Thematic indices
+    "Infra":             "ind_niftyinfralist.csv",
+    "PSE":               "ind_niftycpselist.csv",
+    "MNC":               "ind_niftymnclist.csv",
+    "Oil & Gas":         "ind_niftyoilgaslist.csv",
+    "Commodities":       "ind_niftycommoditieslist.csv",
+}
+
+# Defense stocks hardcoded — Nifty India Defence index not downloadable
+DEFENSE_STOCKS = [
+    "HAL", "BEL", "BEML", "MTAR", "DCXSYS", "PARASDEF",
+    "GRSE", "MAZDOCK", "BDL", "COCHINSHIP", "SOLARINDS",
+    "ASTRAMICRO", "DATAPATTNS", "MIDHANI", "AIALIMITED",
+]
+
+BASE_URL = "https://www.niftyindices.com/IndexConstituent/"
+
+CACHE_FILE = os.path.join(CACHE_DIR, "sector_universe.csv")
 
 
-def _cache_path(dt):
-    return os.path.join(CACHE_DIR, f"nse_universe_{dt}.csv")
-
-
-def _is_fresh(path, max_age_hours=24):
+def _is_fresh(path, max_age_hours=72):
     if not os.path.exists(path):
         return False
     age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(path))
     return age < timedelta(hours=max_age_hours)
 
 
-def _fetch_equity_master():
-    """
-    Fetch NSE equity master list — all listed EQ stocks.
-    URL: https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv
-    This is a static file, no session/cookie needed.
-    """
-    url = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
+def _fetch_index_constituents(filename):
+    """Fetch one index constituent CSV from niftyindices.com."""
+    url = BASE_URL + filename
     try:
-        resp = requests.get(url, headers=NSE_HEADERS, timeout=20)
-        if resp.status_code == 200 and len(resp.content) > 1000:
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        if resp.status_code == 200 and len(resp.content) > 100:
             return resp.text
     except Exception:
         pass
     return None
 
 
-def _fetch_bhavcopy(dt):
-    """Try to download NSE bhavcopy for a given date."""
-    session = requests.Session()
-    session.headers.update(NSE_HEADERS)
-
-    try:
-        session.get("https://www.nseindia.com", timeout=10)
-    except Exception:
-        pass
-
-    date_str = dt.strftime("%d%m%Y")
-    url = (
-        f"https://nsearchives.nseindia.com/products/content/"
-        f"sec_bhavdata_full_{date_str}.csv"
-    )
-
-    try:
-        resp = session.get(url, timeout=20)
-        if resp.status_code == 200 and len(resp.content) > 1000:
-            return resp.text
-    except Exception:
-        pass
-
-    return None
-
-
-def _parse_bhavcopy(csv_text):
-    """Parse bhavcopy CSV and return filtered DataFrame."""
-    from io import StringIO
+def _parse_constituents(csv_text, sector_name):
+    """
+    Parse constituent CSV. Columns vary but always include Symbol.
+    Returns list of dicts with symbol + sector.
+    """
     try:
         df = pd.read_csv(StringIO(csv_text))
         df.columns = [c.strip() for c in df.columns]
 
-        # Normalise column names — NSE changes them occasionally
-        col_map = {}
+        # Find symbol column — NSE uses "Symbol" consistently
+        sym_col = None
         for c in df.columns:
-            cu = c.upper().replace(" ", "_")
-            if "SYMBOL" in cu:
-                col_map[c] = "SYMBOL"
-            elif "SERIES" in cu:
-                col_map[c] = "SERIES"
-            elif "CLOSE" in cu:
-                col_map[c] = "CLOSE"
-            elif "TTL_TRD_QNTY" in cu or "TOTTRDQTY" in cu or "TOTAL_TRADED" in cu or "TTL_TRD" in cu:
-                col_map[c] = "VOLUME"
-        df = df.rename(columns=col_map)
+            if c.strip().lower() == "symbol":
+                sym_col = c
+                break
 
-        required = {"SYMBOL", "SERIES", "CLOSE", "VOLUME"}
-        if not required.issubset(set(df.columns)):
-            return None
+        if sym_col is None:
+            return []
 
-        df = df[df["SERIES"].str.strip() == "EQ"].copy()
-        df["CLOSE"]  = pd.to_numeric(df["CLOSE"],  errors="coerce")
-        df["VOLUME"] = pd.to_numeric(df["VOLUME"], errors="coerce")
-        df = df.dropna(subset=["CLOSE", "VOLUME"])
-        df = df[(df["CLOSE"] >= MIN_PRICE) & (df["VOLUME"] >= MIN_VOLUME)]
-        df["SYMBOL"] = df["SYMBOL"].str.strip()
-        return df[["SYMBOL", "CLOSE", "VOLUME"]].reset_index(drop=True)
+        symbols = df[sym_col].dropna().str.strip().tolist()
+        return [{"symbol": s, "sector": sector_name} for s in symbols if s]
 
     except Exception:
-        return None
+        return []
 
 
-def _load_fallback():
-    """Load nifty500.txt as fallback universe."""
-    path = os.path.join(BASE_DIR, "nifty500.txt")
-    try:
-        with open(path) as f:
-            symbols = [l.strip() for l in f if l.strip() and not l.startswith("#")]
-        rows = [{"SYMBOL": s.replace(".NS", "").replace(".BO", "").upper(),
-                 "CLOSE": 0, "VOLUME": 0} for s in symbols]
-        return pd.DataFrame(rows)
-    except FileNotFoundError:
-        return pd.DataFrame(columns=["SYMBOL", "CLOSE", "VOLUME"])
-
-
-def _parse_equity_master(csv_text):
-    """Parse NSE equity master CSV — returns DataFrame with SYMBOL, CLOSE, VOLUME."""
-    from io import StringIO
-    try:
-        df = pd.read_csv(StringIO(csv_text))
-        df.columns = [c.strip() for c in df.columns]
-
-        # Equity master columns: SYMBOL, NAME OF COMPANY, SERIES, DATE OF LISTING, etc.
-        if "SYMBOL" not in df.columns:
-            return None
-
-        df["SYMBOL"] = df["SYMBOL"].str.strip()
-
-        # Filter EQ series only if column exists
-        if "SERIES" in df.columns:
-            df = df[df["SERIES"].str.strip() == "EQ"]
-
-        # No price/volume in master list — set dummy values (price filter applied later via price data)
-        df["CLOSE"]  = 0
-        df["VOLUME"] = 0
-
-        return df[["SYMBOL", "CLOSE", "VOLUME"]].drop_duplicates("SYMBOL").reset_index(drop=True)
-    except Exception:
-        return None
-
-
-def fetch_nse_universe_with_meta():
+def fetch_sector_universe():
     """
-    Fetch full NSE equity universe.
-    Priority:
-      1. Cached bhavcopy (has price+volume for filtering)
-      2. NSE equity master list (all listed stocks, no price filter)
-      3. Bhavcopy from last 4 trading days
-      4. nifty500.txt fallback
-    Returns DataFrame with columns: SYMBOL, CLOSE, VOLUME.
+    Fetch all sector index constituents and return combined DataFrame.
+    Columns: symbol (bare NSE), sector, symbol_ns (.NS suffix)
+    Cached for 72 hours.
     """
-    today = date.today()
-
-    # Try cached bhavcopy first
-    for delta in range(5):
-        dt        = today - timedelta(days=delta)
-        day_cache = _cache_path(dt)
-        if _is_fresh(day_cache, max_age_hours=72):
-            try:
-                df = pd.read_csv(day_cache)
-                if len(df) > 200:
-                    return df
-            except Exception:
-                pass
-
-    # Try equity master list (no auth needed, always available)
-    master_cache = os.path.join(CACHE_DIR, "nse_equity_master.csv")
-    if _is_fresh(master_cache, max_age_hours=72):
+    if _is_fresh(CACHE_FILE):
         try:
-            df = pd.read_csv(master_cache)
-            if len(df) > 200:
-                print(f"  NSE universe: {len(df)} stocks from equity master (cached)")
+            df = pd.read_csv(CACHE_FILE)
+            if len(df) > 100:
                 return df
         except Exception:
             pass
 
-    csv_text = _fetch_equity_master()
-    if csv_text:
-        df = _parse_equity_master(csv_text)
-        if df is not None and len(df) > 200:
-            df.to_csv(master_cache, index=False)
-            print(f"  NSE universe: {len(df)} stocks from equity master list")
-            return df
+    all_stocks = []
+    print(f"  Fetching {len(INDEX_UNIVERSE)} sector indices from niftyindices.com...")
 
-    # Try fresh bhavcopy for last 4 trading days
-    for delta in range(4):
-        dt       = today - timedelta(days=delta)
-        csv_text = _fetch_bhavcopy(dt)
+    for sector, filename in INDEX_UNIVERSE.items():
+        csv_text = _fetch_index_constituents(filename)
         if csv_text:
-            df = _parse_bhavcopy(csv_text)
-            if df is not None and len(df) > 100:
-                df.to_csv(_cache_path(dt), index=False)
-                print(f"  NSE universe: {len(df)} stocks from bhavcopy ({dt})")
-                return df
+            stocks = _parse_constituents(csv_text, sector)
+            print(f"    {sector:<22} {len(stocks)} stocks")
+            all_stocks.extend(stocks)
+        else:
+            print(f"    {sector:<22} unavailable")
+        time.sleep(0.3)  # polite delay
 
-    print("  NSE sources unavailable — using nifty500.txt fallback")
-    return _load_fallback()
+    if not all_stocks:
+        print("  All sector fetches failed — using nifty500.txt fallback")
+        return _load_fallback()
+
+    # Add Defense stocks manually
+    for s in DEFENSE_STOCKS:
+        all_stocks.append({"symbol": s, "sector": "Defense"})
+    print(f"    {'Defense':<22} {len(DEFENSE_STOCKS)} stocks (hardcoded)")
+
+    df = pd.DataFrame(all_stocks)
+
+    # Deduplicate — keep first occurrence (broad indices first, then sectors)
+    df = df.drop_duplicates(subset="symbol", keep="first").reset_index(drop=True)
+    df["symbol_ns"] = df["symbol"] + ".NS"
+
+    df.to_csv(CACHE_FILE, index=False)
+    print(f"\n  Total unique stocks: {len(df)} across all indices")
+    return df
 
 
 def fetch_nse_universe():
-    """
-    Return list of NSE symbols with .NS suffix, filtered for liquidity.
-    """
-    df = fetch_nse_universe_with_meta()
+    """Return list of symbols with .NS suffix from all sector indices."""
+    df = fetch_sector_universe()
     if df.empty:
         return []
-    return [s + ".NS" for s in df["SYMBOL"].tolist()]
+    col = "symbol_ns" if "symbol_ns" in df.columns else "symbol"
+    syms = df[col].tolist()
+    return [s if s.endswith(".NS") else s + ".NS" for s in syms]
+
+
+def get_symbol_sector_map():
+    """Return dict {symbol.NS: sector} for scoring."""
+    df = fetch_sector_universe()
+    if df.empty:
+        return {}
+    col = "symbol_ns" if "symbol_ns" in df.columns else "symbol"
+    result = {}
+    for _, row in df.iterrows():
+        sym = row[col]
+        if not sym.endswith(".NS"):
+            sym += ".NS"
+        result[sym] = row["sector"]
+    return result
+
+
+def _load_fallback():
+    """Load nifty500.txt as fallback."""
+    path = os.path.join(BASE_DIR, "nifty500.txt")
+    rows = []
+    try:
+        with open(path) as f:
+            for line in f:
+                s = line.strip()
+                if s and not s.startswith("#"):
+                    bare = s.replace(".NS", "").replace(".BO", "").upper()
+                    rows.append({"symbol": bare, "sector": "Nifty 500", "symbol_ns": bare + ".NS"})
+    except FileNotFoundError:
+        pass
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["symbol", "sector", "symbol_ns"])

@@ -27,7 +27,7 @@ from data.fetcher import fetch_cached, fetch_all_parallel
 from data.earnings import fetch_earnings
 from data.result_dates import get_result_date, fetch_upcoming_results
 from data.sectors import rank_sectors, get_sector_stocks
-from data.nse_universe import fetch_nse_universe
+from data.nse_universe import fetch_nse_universe, get_symbol_sector_map
 from engine.earnings_filter import filter_earnings
 from engine.price_reactor import measure_reaction, avg_spike
 from engine.entry_detector import detect_entry
@@ -236,13 +236,13 @@ def main():
         print(f"  Sector filter: {args.sector} ({len(sector_stock_map)} stocks)")
 
     elif args.mode == "weekly":
-        universe = fetch_nse_universe()
-        for sym in universe:
-            sector_stock_map[sym] = 99
+        sym_sector_map = get_symbol_sector_map()
+        for sym, sec in sym_sector_map.items():
+            sector_stock_map[sym] = sec
         # Backbone always included
         for sym in _load_list(BACKBONE_FILE):
-            sector_stock_map.setdefault(sym, 99)
-        print(f"  Full NSE universe: {len(sector_stock_map)} stocks")
+            sector_stock_map.setdefault(sym, "Backbone")
+        print(f"  Sector universe: {len(sector_stock_map)} stocks across all indices")
 
     else:
         # Daily: sector stocks + backbone
@@ -283,8 +283,12 @@ def main():
         print(f"  [{scanned:>4}/{total}] {sym:<20}", end=" ", flush=True)
         try:
             df          = price_data.get(sym)
-            sector_rank = sector_stock_map.get(sym, 99)
+            sector_val  = sector_stock_map.get(sym, 99)
+            # sector_val is either a sector name (str) or rank (int)
+            sector_rank = sector_val if isinstance(sector_val, int) else 5
             res         = _analyse_stock(sym, df, sector_rank, upcoming_map, delay=delay)
+            if res and isinstance(sector_val, str):
+                res["sector"] = sector_val
             if res and res["score"] >= min_score:
                 results.append(res)
                 tag = res["status"]
@@ -326,13 +330,17 @@ def main():
         wl_path = _update_monthly_watchlist(df_out)
 
     # ── Results table ──
+    if "sector" not in df_out.columns:
+        df_out["sector"] = "-"
+
     print(f"\n  TOP {len(df_out)} SETUPS")
-    print(f"  {'Symbol':<18} {'Status':<11} {'Score':>5} {'Entry':>8} "
-          f"{'Stop':>8} {'Target':>8} {'RR':>5} {'YoY%':>7} {'Conf':<6}")
-    print("  " + "-" * 80)
+    print(f"  {'Symbol':<18} {'Sector':<16} {'Status':<11} {'Score':>5} "
+          f"{'Entry':>8} {'Stop':>8} {'Target':>8} {'RR':>5} {'YoY%':>7} {'Conf':<6}")
+    print("  " + "-" * 95)
     for _, row in df_out.iterrows():
+        sector_label = str(row.get("sector") or "-")[:15]
         print(
-            f"  {row['symbol']:<18} {row['status']:<11} {row['score']:>5} "
+            f"  {row['symbol']:<18} {sector_label:<16} {row['status']:<11} {row['score']:>5} "
             f"{str(row['entry'] or '-'):>8} {str(row['stop'] or '-'):>8} "
             f"{str(row['target'] or '-'):>8} {str(row['rr'] or '-'):>5} "
             f"{str(row['proj_yoy_growth'] or '-'):>7} "
