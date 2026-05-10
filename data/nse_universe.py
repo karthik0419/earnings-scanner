@@ -74,9 +74,10 @@ HARDCODED_SECTORS = {
 
     # Nifty India Defence — CSV not available on niftyindices.com
     "Defense": [
-        "HAL", "BEL", "BEML", "MTAR", "DCXSYS", "PARASDEF",
+        "HAL", "BEL", "BEML", "MTARTECH", "DCX", "PARASDEF",
         "GRSE", "MAZDOCK", "BDL", "COCHINSHIP", "SOLARINDS",
-        "ASTRAMICRO", "DATAPATTNS", "MIDHANI", "AIALIMITED",
+        "ASTRAMICRO", "DATAPATTNS", "MIDHANI",
+        # MTAR→MTARTECH, DCXSYS→DCX, AIALIMITED removed (unlisted)
     ],
 
     # Chemicals — specialty, agro, commodity chemicals
@@ -85,22 +86,25 @@ HARDCODED_SECTORS = {
         "VINATIORGA", "IOLCP", "NAVINFLUOR", "ALKYLAMINE", "FINEORG",
         "CLEAN", "GUJALKALI", "PCBL", "SUDARSCHEM", "DEEPAKNTR",
         "SRF", "NOCIL", "SOLARA", "ASTEC", "BASF",
-        "AARTI", "GHCL", "UFLEX", "NEOGEN", "ROSSARI",
+        "GHCL", "UFLEX", "NEOGENECHEM", "ROSSARI",
+        # AARTI removed (dup of AARTIIND), NEOGEN→NEOGENECHEM
     ],
 
     # Capital Markets — exchanges, depositories, AMCs, brokers
     "Capital Markets": [
-        "MCXINDIA", "CDSL", "BSE", "ANGELONE", "KFINTECH",
-        "CAMS", "MOTILALOSW", "IIFLSEC", "NUVAMA", "CHOICEIN",
+        "MCX", "CDSL", "BSE", "ANGELONE", "KFINTECH",
+        "CAMS", "MOTILALOFS", "IIFLSEC", "NUVAMA", "CHOICEIN",
         "GEOJITFSL", "ICICIPRULI", "HDFCLIFE", "SBILIFE",
         "360ONE", "ICICIGI", "BAJAJFINSV",
+        # MCXINDIA→MCX, MOTILALOSW→MOTILALOFS
     ],
 
     # EV & New Age Automotive — EVs, auto components, charging
     "EV & New Age Auto": [
-        "OLECTRA", "TIINDIA", "WARDWIZARD", "EXIDEIND", "AMARARAJA",
+        "OLECTRA", "TIINDIA", "WARDWIZARD", "EXIDEIND", "AMARAJABAT",
         "TATAELXSI", "KAYNES", "SONACOMS", "CRAFTSMAN", "SANSERA",
         "SUPRAJIT", "GABRIEL", "ENDURANCE", "MOTHERSON", "BOSCHLTD",
+        # AMARARAJA→AMARAJABAT
     ],
 
     # New Age / Digital Tech — platform companies, SaaS, fintechs
@@ -113,24 +117,27 @@ HARDCODED_SECTORS = {
 
     # Textiles — apparel, yarn, home furnishing
     "Textiles": [
-        "PAGEIND", "VARDHMAN", "WELSPUNLIV", "RAYMOND", "TRIDENT",
-        "KITEX", "ALOKTEXT", "FILATEX", "GRASIM", "ARVIND",
-        "RUPA", "DOLLAR", "NITIN", "ICIL", "SPORTKING",
+        "PAGEIND", "VARDHACRL", "WELSPUNLIV", "RAYMOND", "TRIDENT",
+        "KITEX", "ALOKINDS", "FILATEX", "GRASIM", "ARVIND",
+        "RUPA", "DOLLAR", "NITINSPIN", "SPORTKING",
+        # VARDHMAN→VARDHACRL, ALOKTEXT→ALOKINDS, NITIN→NITINSPIN, ICIL removed
     ],
 
     # Agri & Fertilizers — crop protection, agri inputs
     "Agri & Fertilizers": [
-        "COROMANDEL", "PIIND", "CHAMBAL", "GSFC",
-        "DEEPAKFERT", "RALLIS", "DHANUKA", "BAYER",
-        "ASTEC", "INSECTICID", "EXCEL", "DHARAMSI",
-        "KSCL", "SAHYADRI", "SUMITCHEM",
+        "COROMANDEL", "PIIND", "CHAMBLFERT", "GSFC",
+        "DEEPAKFERT", "RALLIS", "DHANUKA", "BAYERCROP",
+        "ASTEC", "INSECTICIDES", "EXCELINDUS",
+        "KSCL", "SUMICHEM",
+        # CHAMBAL→CHAMBLFERT, BAYER→BAYERCROP, SUMITCHEM→SUMICHEM
+        # INSECTICID→INSECTICIDES, EXCEL→EXCELINDUS, DHARAMSI/SAHYADRI removed
     ],
 
     # Logistics — freight, courier, 3PL, rail
     "Logistics": [
         "DELHIVERY", "CONCOR", "BLUEDART", "GATI", "ALLCARGO",
-        "MAHINDLOG", "TCI", "TVSSCS", "VRL", "XPRESSBEES",
-        "MAHLOG", "APLAPOLLO", "GATIFLEX",
+        "MAHLOG", "TCI", "TVSSCS", "VRLLOG", "APLAPOLLO",
+        # MAHINDLOG→MAHLOG, VRL→VRLLOG, XPRESSBEES/GATIFLEX removed (unlisted)
     ],
 
     # Power — generation, distribution, transmission
@@ -138,7 +145,7 @@ HARDCODED_SECTORS = {
         "TATAPOWER", "TORNTPOWER", "ADANIPOWER", "CESC",
         "JPPOWER", "NHPC", "SJVN", "GIPCL", "KALPATPOWR",
         "RTNPOWER", "JSWENERGY", "INOXWIND", "SUZLON",
-        "WINDWORLD", "GREENKO",
+        # WINDWORLD/GREENKO removed (unlisted/private)
     ],
 
     # Telecom — operators, equipment, cables, networking
@@ -193,7 +200,12 @@ def _parse_constituents(csv_text, sector_name):
             return []
 
         symbols = df[sym_col].dropna().str.strip().tolist()
-        return [{"symbol": s, "sector": sector_name} for s in symbols if s]
+        # Filter out dummy/placeholder rows niftyindices.com injects in some CSVs
+        return [
+            {"symbol": s, "sector": sector_name}
+            for s in symbols
+            if s and not s.upper().startswith("DUMMY") and len(s) <= 20
+        ]
 
     except Exception:
         return []
