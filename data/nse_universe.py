@@ -1,9 +1,10 @@
 """
 NSE sector-based universe fetcher.
 Pulls official index constituent lists from niftyindices.com for all
-18 sector/thematic indices. Covers ~400-500 quality, liquid stocks
-across every sector — no stock left behind.
+major sector/thematic indices. Additional sectors hardcoded where
+niftyindices.com does not expose downloadable CSVs.
 
+Covers ~550+ quality stocks across ALL NSE equity sectors.
 Sector momentum is used for SCORING only, not filtering.
 All sectors scanned every week.
 """
@@ -60,14 +61,93 @@ INDEX_UNIVERSE = {
     "MNC":               "ind_niftymnclist.csv",
     "Oil & Gas":         "ind_niftyoilgaslist.csv",
     "Commodities":       "ind_niftycommoditieslist.csv",
+
+    # Additional thematic — try CSV; supplemented by hardcoded if unavailable
+    "Capital Market":    "ind_niftycapitalmarketlist.csv",
+    "India Manufacturing":"ind_niftyindiamanufacturinglist.csv",
+    "Services Sector":   "ind_niftyservicesectorlist.csv",
 }
 
-# Defense stocks hardcoded — Nifty India Defence index not downloadable
-DEFENSE_STOCKS = [
-    "HAL", "BEL", "BEML", "MTAR", "DCXSYS", "PARASDEF",
-    "GRSE", "MAZDOCK", "BDL", "COCHINSHIP", "SOLARINDS",
-    "ASTRAMICRO", "DATAPATTNS", "MIDHANI", "AIALIMITED",
-]
+# Sectors hardcoded where niftyindices.com does not expose a downloadable CSV.
+# These supplement the index-fetched lists; deduplication handles any overlap.
+HARDCODED_SECTORS = {
+
+    # Nifty India Defence — CSV not available on niftyindices.com
+    "Defense": [
+        "HAL", "BEL", "BEML", "MTAR", "DCXSYS", "PARASDEF",
+        "GRSE", "MAZDOCK", "BDL", "COCHINSHIP", "SOLARINDS",
+        "ASTRAMICRO", "DATAPATTNS", "MIDHANI", "AIALIMITED",
+    ],
+
+    # Chemicals — specialty, agro, commodity chemicals
+    "Chemicals": [
+        "PIDILITIND", "AARTIIND", "DEEPAKFERT", "GNFC", "TATACHEM",
+        "VINATIORGA", "IOLCP", "NAVINFLUOR", "ALKYLAMINE", "FINEORG",
+        "CLEAN", "GUJALKALI", "PCBL", "SUDARSCHEM", "DEEPAKNTR",
+        "SRF", "NOCIL", "SOLARA", "ASTEC", "BASF",
+        "AARTI", "GHCL", "UFLEX", "NEOGEN", "ROSSARI",
+    ],
+
+    # Capital Markets — exchanges, depositories, AMCs, brokers
+    "Capital Markets": [
+        "MCXINDIA", "CDSL", "BSE", "ANGELONE", "KFINTECH",
+        "CAMS", "MOTILALOSW", "IIFLSEC", "NUVAMA", "CHOICEIN",
+        "GEOJITFSL", "ICICIPRULI", "HDFCLIFE", "SBILIFE",
+        "360ONE", "ICICIGI", "BAJAJFINSV",
+    ],
+
+    # EV & New Age Automotive — EVs, auto components, charging
+    "EV & New Age Auto": [
+        "OLECTRA", "TIINDIA", "WARDWIZARD", "EXIDEIND", "AMARARAJA",
+        "TATAELXSI", "KAYNES", "SONACOMS", "CRAFTSMAN", "SANSERA",
+        "SUPRAJIT", "GABRIEL", "ENDURANCE", "MOTHERSON", "BOSCHLTD",
+    ],
+
+    # New Age / Digital Tech — platform companies, SaaS, fintechs
+    "New Age Tech": [
+        "ZOMATO", "NYKAA", "POLICYBZR", "DELHIVERY", "CARTRADE",
+        "EASEMYTRIP", "MAPMYINDIA", "LATENTVIEW", "TANLA",
+        "ROUTE", "INTELLECT", "NEWGEN", "MASTEK", "TATATECH",
+        "ZAGGLE", "RATEGAIN", "INDIASHLTR",
+    ],
+
+    # Textiles — apparel, yarn, home furnishing
+    "Textiles": [
+        "PAGEIND", "VARDHMAN", "WELSPUNLIV", "RAYMOND", "TRIDENT",
+        "KITEX", "ALOKTEXT", "FILATEX", "GRASIM", "ARVIND",
+        "RUPA", "DOLLAR", "NITIN", "ICIL", "SPORTKING",
+    ],
+
+    # Agri & Fertilizers — crop protection, agri inputs
+    "Agri & Fertilizers": [
+        "COROMANDEL", "PIIND", "CHAMBAL", "GSFC",
+        "DEEPAKFERT", "RALLIS", "DHANUKA", "BAYER",
+        "ASTEC", "INSECTICID", "EXCEL", "DHARAMSI",
+        "KSCL", "SAHYADRI", "SUMITCHEM",
+    ],
+
+    # Logistics — freight, courier, 3PL, rail
+    "Logistics": [
+        "DELHIVERY", "CONCOR", "BLUEDART", "GATI", "ALLCARGO",
+        "MAHINDLOG", "TCI", "TVSSCS", "VRL", "XPRESSBEES",
+        "MAHLOG", "APLAPOLLO", "GATIFLEX",
+    ],
+
+    # Power — generation, distribution, transmission
+    "Power": [
+        "TATAPOWER", "TORNTPOWER", "ADANIPOWER", "CESC",
+        "JPPOWER", "NHPC", "SJVN", "GIPCL", "KALPATPOWR",
+        "RTNPOWER", "JSWENERGY", "INOXWIND", "SUZLON",
+        "WINDWORLD", "GREENKO",
+    ],
+
+    # Telecom — operators, equipment, cables, networking
+    "Telecom": [
+        "BHARTIARTL", "IDEA", "HFCL", "STLTECH", "TEJASNET",
+        "VINDHYATEL", "RAILTEL", "ITI", "TATACOMM",
+        "OPTIEMUS", "CMSINFO",
+    ],
+}
 
 BASE_URL = "https://www.niftyindices.com/IndexConstituent/"
 
@@ -150,10 +230,11 @@ def fetch_sector_universe():
         print("  All sector fetches failed — using nifty500.txt fallback")
         return _load_fallback()
 
-    # Add Defense stocks manually
-    for s in DEFENSE_STOCKS:
-        all_stocks.append({"symbol": s, "sector": "Defense"})
-    print(f"    {'Defense':<22} {len(DEFENSE_STOCKS)} stocks (hardcoded)")
+    # Add all hardcoded sector stocks
+    for sector_name, stocks in HARDCODED_SECTORS.items():
+        for s in stocks:
+            all_stocks.append({"symbol": s, "sector": sector_name})
+        print(f"    {sector_name:<22} {len(stocks)} stocks (hardcoded)")
 
     df = pd.DataFrame(all_stocks)
 
