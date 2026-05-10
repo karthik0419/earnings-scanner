@@ -25,7 +25,7 @@ NSE_HEADERS = {
 }
 
 MIN_PRICE  = 20       # filter out penny stocks
-MIN_VOLUME = 50000    # minimum daily traded quantity
+MIN_VOLUME = 10000    # minimum daily traded quantity
 
 
 def _cache_path(dt):
@@ -39,12 +39,27 @@ def _is_fresh(path, max_age_hours=24):
     return age < timedelta(hours=max_age_hours)
 
 
+def _fetch_equity_master():
+    """
+    Fetch NSE equity master list — all listed EQ stocks.
+    URL: https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv
+    This is a static file, no session/cookie needed.
+    """
+    url = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
+    try:
+        resp = requests.get(url, headers=NSE_HEADERS, timeout=20)
+        if resp.status_code == 200 and len(resp.content) > 1000:
+            return resp.text
+    except Exception:
+        pass
+    return None
+
+
 def _fetch_bhavcopy(dt):
     """Try to download NSE bhavcopy for a given date."""
     session = requests.Session()
     session.headers.update(NSE_HEADERS)
 
-    # Get cookies first
     try:
         session.get("https://www.nseindia.com", timeout=10)
     except Exception:
@@ -116,42 +131,87 @@ def _load_fallback():
         return pd.DataFrame(columns=["SYMBOL", "CLOSE", "VOLUME"])
 
 
+def _parse_equity_master(csv_text):
+    """Parse NSE equity master CSV — returns DataFrame with SYMBOL, CLOSE, VOLUME."""
+    from io import StringIO
+    try:
+        df = pd.read_csv(StringIO(csv_text))
+        df.columns = [c.strip() for c in df.columns]
+
+        # Equity master columns: SYMBOL, NAME OF COMPANY, SERIES, DATE OF LISTING, etc.
+        if "SYMBOL" not in df.columns:
+            return None
+
+        df["SYMBOL"] = df["SYMBOL"].str.strip()
+
+        # Filter EQ series only if column exists
+        if "SERIES" in df.columns:
+            df = df[df["SERIES"].str.strip() == "EQ"]
+
+        # No price/volume in master list — set dummy values (price filter applied later via price data)
+        df["CLOSE"]  = 0
+        df["VOLUME"] = 0
+
+        return df[["SYMBOL", "CLOSE", "VOLUME"]].drop_duplicates("SYMBOL").reset_index(drop=True)
+    except Exception:
+        return None
+
+
 def fetch_nse_universe_with_meta():
     """
-    Fetch full NSE equity universe with price + volume metadata.
-    Tries last 4 calendar days to handle weekends/holidays.
+    Fetch full NSE equity universe.
+    Priority:
+      1. Cached bhavcopy (has price+volume for filtering)
+      2. NSE equity master list (all listed stocks, no price filter)
+      3. Bhavcopy from last 4 trading days
+      4. nifty500.txt fallback
     Returns DataFrame with columns: SYMBOL, CLOSE, VOLUME.
     """
     today = date.today()
 
-    # Try today's cache first
-    cache = _cache_path(today)
-    if _is_fresh(cache):
-        try:
-            return pd.read_csv(cache)
-        except Exception:
-            pass
-
-    # Try last 4 days (handles weekends + holidays)
-    for delta in range(4):
-        dt = today - timedelta(days=delta)
+    # Try cached bhavcopy first
+    for delta in range(5):
+        dt        = today - timedelta(days=delta)
         day_cache = _cache_path(dt)
-        if _is_fresh(day_cache, max_age_hours=48):
+        if _is_fresh(day_cache, max_age_hours=72):
             try:
-                return pd.read_csv(day_cache)
+                df = pd.read_csv(day_cache)
+                if len(df) > 200:
+                    return df
             except Exception:
                 pass
 
+    # Try equity master list (no auth needed, always available)
+    master_cache = os.path.join(CACHE_DIR, "nse_equity_master.csv")
+    if _is_fresh(master_cache, max_age_hours=72):
+        try:
+            df = pd.read_csv(master_cache)
+            if len(df) > 200:
+                print(f"  NSE universe: {len(df)} stocks from equity master (cached)")
+                return df
+        except Exception:
+            pass
+
+    csv_text = _fetch_equity_master()
+    if csv_text:
+        df = _parse_equity_master(csv_text)
+        if df is not None and len(df) > 200:
+            df.to_csv(master_cache, index=False)
+            print(f"  NSE universe: {len(df)} stocks from equity master list")
+            return df
+
+    # Try fresh bhavcopy for last 4 trading days
+    for delta in range(4):
+        dt       = today - timedelta(days=delta)
         csv_text = _fetch_bhavcopy(dt)
         if csv_text:
             df = _parse_bhavcopy(csv_text)
             if df is not None and len(df) > 100:
-                df.to_csv(day_cache, index=False)
-                print(f"  NSE universe: {len(df)} stocks loaded from bhavcopy ({dt})")
+                df.to_csv(_cache_path(dt), index=False)
+                print(f"  NSE universe: {len(df)} stocks from bhavcopy ({dt})")
                 return df
 
-    # Fallback
-    print("  NSE bhavcopy unavailable — using nifty500.txt fallback")
+    print("  NSE sources unavailable — using nifty500.txt fallback")
     return _load_fallback()
 
 
