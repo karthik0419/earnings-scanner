@@ -77,10 +77,10 @@ HARDCODED_SECTORS = {
 
     # Nifty India Defence — CSV not available on niftyindices.com
     "Defense": [
-        "HAL", "BEL", "BEML", "MTARTECH", "DCX", "PARASDEF",
+        "HAL", "BEL", "BEML", "MTARTECH", "PDSL",
         "GRSE", "MAZDOCK", "BDL", "COCHINSHIP", "SOLARINDS",
         "ASTRAMICRO", "DATAPATTNS", "MIDHANI",
-        # MTAR→MTARTECH, DCXSYS→DCX, AIALIMITED removed (unlisted)
+        # PARASDEF→PDSL, DCX/DCXSYS delisted
     ],
 
     # Chemicals — specialty, agro, commodity chemicals
@@ -89,8 +89,8 @@ HARDCODED_SECTORS = {
         "VINATIORGA", "IOLCP", "NAVINFLUOR", "ALKYLAMINE", "FINEORG",
         "CLEAN", "GUJALKALI", "PCBL", "SUDARSCHEM", "DEEPAKNTR",
         "SRF", "NOCIL", "SOLARA", "ASTEC", "BASF",
-        "GHCL", "UFLEX", "NEOGENECHEM", "ROSSARI",
-        # AARTI removed (dup of AARTIIND), NEOGEN→NEOGENECHEM
+        "GHCL", "UFLEX", "NEOGEN", "ROSSARI",
+        # AARTI removed (dup of AARTIIND), NEOGENECHEM→NEOGEN
     ],
 
     # Capital Markets — exchanges, depositories, AMCs, brokers
@@ -104,7 +104,7 @@ HARDCODED_SECTORS = {
 
     # EV & New Age Automotive — EVs, auto components, charging
     "EV & New Age Auto": [
-        "OLECTRA", "TIINDIA", "WARDWIZARD", "EXIDEIND", "AMARAJABAT",
+        "OLECTRA", "TIINDIA", "EXIDEIND", "AMARAJABAT",
         "TATAELXSI", "KAYNES", "SONACOMS", "CRAFTSMAN", "SANSERA",
         "SUPRAJIT", "GABRIEL", "ENDURANCE", "MOTHERSON", "BOSCHLTD",
         # AMARARAJA→AMARAJABAT
@@ -120,35 +120,35 @@ HARDCODED_SECTORS = {
 
     # Textiles — apparel, yarn, home furnishing
     "Textiles": [
-        "PAGEIND", "VARDHACRL", "WELSPUNLIV", "RAYMOND", "TRIDENT",
+        "PAGEIND", "WELSPUNLIV", "RAYMOND", "TRIDENT",
         "KITEX", "ALOKINDS", "FILATEX", "GRASIM", "ARVIND",
         "RUPA", "DOLLAR", "NITINSPIN", "SPORTKING",
-        # VARDHMAN→VARDHACRL, ALOKTEXT→ALOKINDS, NITIN→NITINSPIN, ICIL removed
+        # VARDHACRL delisted, ALOKTEXT→ALOKINDS, NITIN→NITINSPIN, ICIL removed
     ],
 
     # Agri & Fertilizers — crop protection, agri inputs
     "Agri & Fertilizers": [
         "COROMANDEL", "PIIND", "CHAMBLFERT", "GSFC",
         "DEEPAKFERT", "RALLIS", "DHANUKA", "BAYERCROP",
-        "ASTEC", "INSECTICIDES", "EXCELINDUS",
+        "ASTEC", "INSECTICID", "EXCELINDUS",
         "KSCL", "SUMICHEM",
         # CHAMBAL→CHAMBLFERT, BAYER→BAYERCROP, SUMITCHEM→SUMICHEM
-        # INSECTICID→INSECTICIDES, EXCEL→EXCELINDUS, DHARAMSI/SAHYADRI removed
+        # INSECTICIDES→INSECTICID, EXCEL→EXCELINDUS, DHARAMSI/SAHYADRI removed
     ],
 
     # Logistics — freight, courier, 3PL, rail
     "Logistics": [
-        "DELHIVERY", "CONCOR", "BLUEDART", "GATI", "ALLCARGO",
+        "DELHIVERY", "CONCOR", "BLUEDART", "ALLCARGO",
         "MAHLOG", "TCI", "TVSSCS", "VRLLOG", "APLAPOLLO",
-        # MAHINDLOG→MAHLOG, VRL→VRLLOG, XPRESSBEES/GATIFLEX removed (unlisted)
+        # MAHINDLOG→MAHLOG, VRL→VRLLOG, GATI delisted, XPRESSBEES/GATIFLEX removed (unlisted)
     ],
 
     # Power — generation, distribution, transmission
     "Power": [
         "TATAPOWER", "TORNTPOWER", "ADANIPOWER", "CESC",
-        "JPPOWER", "NHPC", "SJVN", "GIPCL", "KALPATPOWR",
+        "JPPOWER", "NHPC", "SJVN", "GIPCL",
         "RTNPOWER", "JSWENERGY", "INOXWIND", "SUZLON",
-        # WINDWORLD/GREENKO removed (unlisted/private)
+        # KALPATPOWR delisted, WINDWORLD/GREENKO removed (unlisted/private)
     ],
 
     # Telecom — operators, equipment, cables, networking
@@ -165,9 +165,9 @@ HARDCODED_SECTORS = {
         "HARSHA", "SYRMA", "AVALON", "CENTUM", "ELIN",
         "AZAD", "IDEAFORGE", "KAYNES",
         # Specialty chemicals & materials
-        "GRAVITA", "ANUPAM", "EPIGRAL", "TATACHEM",
+        "GRAVITA", "EPIGRAL", "TATACHEM",
         # Healthcare & diagnostics
-        "VIJAYA", "KRSNAA", "MEDPLUS", "HEALTHIUM",
+        "VIJAYA", "KRSNAA", "MEDPLUS",
         # New-age financial services
         "SBFC", "UGROCAP", "CREDITACC",
         # Consumer & retail
@@ -175,7 +175,7 @@ HARDCODED_SECTORS = {
         # Capital goods & infra
         "SANGHVIMOV", "INOXINDIA", "GARFIBRES",
         # Defense & aerospace
-        "IDEAFORGE", "DEEL",
+        "IDEAFORGE",
     ],
 }
 
