@@ -9,7 +9,7 @@ This workspace holds **16 projects across 3 domains**:
 2. Job-hunting automation (Python + Chrome extension)
 3. Restaurant POS SaaS — TableFlow (Node.js microservices)
 
-> **Workspace layout (2026-07-18):** The root `F:\projects\claude` is a clean container — only `AGENTS.md`, `interview-prep.md`, and per-project subfolders live here. No loose project files at root. The root `.git` tracks the `earnings-momentum-scanner/` subfolder (commit `4430bda` restructured loose root files into that subfolder). All other project subfolders are untracked.
+> **Workspace layout (2026-07-18):** The root `F:\projects\claude` is a clean container — only `AGENTS.md`, `interview-prep.md`, and per-project subfolders live here. No loose project files at root. The root `.git` tracks the `earnings-momentum-scanner/` subfolder (commit `4430bda` restructured loose root files into that subfolder). The duplicate `earnings-scanner/` clone was removed (byte-identical to `earnings-momentum-scanner/`). All other project subfolders are untracked.
 
 ---
 
@@ -22,7 +22,6 @@ This workspace holds **16 projects across 3 domains**:
 | `scanner-v3/` | Trading | Python | **Active (v3 production)** |
 | `weekly-swing-setup-scanner/` | Trading | Python | Redundant — candidate for archival |
 | `earnings-momentum-scanner/` | Trading | Python | Active (PEAD strategy) — tracked by root git |
-| `earnings-scanner/` | Trading | Python | **Duplicate clone** of earnings-momentum-scanner (byte-identical, separate GitHub remote). Candidate for removal. |
 | `scanner-training/` | Trading | Python | Support (validation/tuning) |
 | `chart-visualizer/` | Trading | Python | Support (charts from v2 output) |
 | `_old-scanner/`, `_archived/` | Trading | Python | Archived (v5.0 / v6.0 frozen) |
@@ -191,8 +190,6 @@ Subset of scanner-v2: no monthly TF, no WATCH tier, no diagonal neckline, single
 
 ### `earnings-momentum-scanner/` — PEAD / post-earnings momentum (v3)
 Different strategy: scans for post-earnings pullback entries. Uses `screener.in` for earnings data + `scipy` for profit projection. Modes: weekly (588 stocks), discovery (2131 stocks, ~90 min), daily (top sectors + backbone). **Has `requirements.txt`.** This is the project tracked by the root git repo (remote: `karthik0419/earnings-momentum-scanner`).
-
-> **Note:** `earnings-scanner/` is a byte-identical duplicate clone (remote: `karthik0419/earnings-scanner`). Same files, same content, separate GitHub repo. Candidate for removal — decide which GitHub repo is canonical and delete the other local clone.
 
 ```powershell
 cd earnings-momentum-scanner
