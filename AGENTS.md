@@ -79,10 +79,16 @@ Has `requirements.txt`, `backbone50.txt`, `nifty500.txt`, `COMPARISON_REPORT.md`
 3. **Channel Breakout tightened** — 24% win rate was dragging performance; volume gate 1.3x → 1.5x, RSI < 75, R:R >= 1.5.
 4. **Cup & Handle (Weekly) promoted** — 50% win rate in `scanner/`; score bonus 25 → 28.
 5. **Price range filter** — retail-friendly high-momentum stocks; `--min-price 100 --max-price 400`.
-6. **Self-contained sector rotation** — no dependency on `scanner/`; `utils/sector_rotation_v3.py` with 200+ stock-to-sector mappings.
+6. **Self-contained sector rotation** — no dependency on `scanner/`; `utils/sector_rotation_v3.py` with 568+ stock-to-sector mappings from NSE official index constituents.
 7. **Bearish / short mode** — NSE Heat Map strategy: find weak sectors, short weakest stocks; `--bearish` flag.
 8. **`requirements.txt`** — was missing in v2; now reproducible installs.
 9. **C&H Weekly detector fixed (2026-07-17)** — was -0.56% avg P&L (losing money). Root cause: handle_bars=12 allowed 3-month downtrends as "handles". Fixed to Bulkowski's classical definition: handle_bars=4, max_depth=0.50, near_pct=0.08/0.15, handle_depth_ratio=0.50, volume_lookback=52. Now +0.76% avg P&L on 746 out-of-sample trades. Parameterized so daily/monthly detectors are unaffected.
+
+**Additional improvements (2026-07-18):**
+10. **Sector classification fixed** — was 47% wrong (14/30 scan picks misclassified). Now uses 3-layer lookup: NSE official index constituents (568 stocks) → yfinance `industry` field (granular, 80+ mappings) → yfinance `sector` field (coarse fallback). 30/30 correct on test picks. Run `python utils/build_sector_map.py` to refresh.
+11. **Daily scan smart universe** — was only scanning ~600 stocks (Nifty 500 + hardcoded ~15/sector). Now scans Backbone 50 + Nifty 500 + weekly picks + ALL stocks in today's hot sectors (50-100+ per sector from NSE sector map). `--full` flag scans complete NSE EQ (~2000+). Parallel thread pool (`--workers 8`, 4-8x faster).
+12. **Timeframe tracking + filter** — every pattern result now includes `timeframe` column (Daily/Weekly/Monthly). `--timeframe daily|weekly|monthly` flag filters to one timeframe for manual chart verification.
+13. **Automated Telegram notifications** — scanner.py and daily_scan.py auto-send Telegram on completion. `--no-notify` to opt out.
 
 **Backtest results (post-fix, validated on two datasets):**
 
@@ -118,14 +124,25 @@ python scanner.py --bearish
 # Quick test (50 stocks only)
 python scanner.py --test
 
-# Daily morning scan (volume surges + hot sectors)
+# Daily morning scan (smart universe: Backbone + Nifty500 + hot sector stocks)
 python daily_scan.py --top 15
+
+# Daily scan - full NSE EQ universe (~2000+ stocks, ~10-15 min)
+python daily_scan.py --full --workers 10
 
 # Daily scan with price filter
 python daily_scan.py --min-price 100 --max-price 400
 
 # Daily bearish scan
 python daily_scan.py --bearish
+
+# Scan by timeframe (for manual chart verification)
+python scanner.py --timeframe weekly    # weekly patterns only
+python scanner.py --timeframe daily     # daily patterns only
+python scanner.py --timeframe monthly   # monthly patterns only
+
+# Refresh sector mapping (run monthly to pick up new IPOs)
+python utils/build_sector_map.py
 
 # Weekly scan + charts + Telegram
 .\run_weekly.bat
