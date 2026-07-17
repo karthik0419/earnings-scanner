@@ -1,6 +1,6 @@
 # AGENTS.md — Workspace Map
 
-Workspace root: `C:\Users\91814\Desktop\claude`
+Workspace root: `F:\projects\claude`
 Owner: Kartik Bandewar (DevOps/SRE engineer, Pune, India)
 Platform: Windows (PowerShell). Python projects use `python` (not `python3`).
 
